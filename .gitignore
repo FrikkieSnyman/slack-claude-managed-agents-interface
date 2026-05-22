@@ -1,7 +1,8 @@
 docs/superpowers/
 node_modules/
 dist/
-data/
+data/*
+!data/.gitkeep
 .env
 .env.*
 !.env.example
