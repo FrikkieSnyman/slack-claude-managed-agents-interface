@@ -1,0 +1,18 @@
+[Unit]
+Description=Slack <-> CMA bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=slack-cma
+WorkingDirectory=/opt/slack-cma
+EnvironmentFile=/etc/slack-cma/env
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
