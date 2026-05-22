@@ -10,9 +10,16 @@ Single-process Node/TypeScript server that bridges a Slack workspace to a Claude
 
 - Node 20+
 - A configured CMA agent + environment (and optional vault / memory store)
-- A Slack app installed to your workspace with Socket Mode enabled and these scopes:
-  - `app_mentions:read`, `chat:write`, `im:history`, `im:read`, `im:write`
-  - Event subscriptions: `app_mention`, `message.im`
+- A Slack app installed to your workspace with Socket Mode enabled and these bot scopes:
+  - `app_mentions:read`, `chat:write`
+  - `im:history`, `im:read`, `im:write` (DMs)
+  - `channels:history` (to receive in-thread follow-ups in public channels)
+  - `groups:history` (optional — same for private channels the bot is invited to)
+- Event subscriptions:
+  - `app_mention` — picks up @mentions
+  - `message.im` — DMs
+  - `message.channels` — in-thread follow-ups in public channels (filtered server-side to threads with a known session)
+  - `message.groups` — same for private channels
 
 ## Setup
 

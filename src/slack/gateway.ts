@@ -23,6 +23,26 @@ export function deriveThreadKey(e: SlackEventCore): ThreadKey {
   return { teamId, channelId, threadTs: e.ts };
 }
 
+export interface MessageRoutingInput extends SlackEventCore {
+  text?: string;
+  bot_id?: string;
+  subtype?: string;
+}
+
+export function shouldHandleMessage(
+  raw: MessageRoutingInput,
+  botUserId: string | undefined,
+  store: ThreadSessionStore,
+): boolean {
+  if (raw.bot_id || raw.subtype) return false;
+  if (!raw.text) return false;
+  if (botUserId && raw.text.includes(`<@${botUserId}>`)) return false;
+  if (raw.channel_type === "im") return true;
+  if (!raw.thread_ts) return false;
+  const row = store.findByThread(deriveThreadKey(raw));
+  return row !== null && row.lastStatus !== "terminated";
+}
+
 export interface HandleArgs {
   key: ThreadKey;
   text: string;
@@ -147,9 +167,9 @@ export function buildSlackApp(deps: GatewayDeps): bolt.App {
     await handle(event, webClient);
   });
 
-  app.message(async ({ message, client: webClient }) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((message as any).channel_type !== "im") return;
+  app.message(async ({ message, client: webClient, context }) => {
+    const botUserId = (context as { botUserId?: string }).botUserId;
+    if (!shouldHandleMessage(message as MessageRoutingInput, botUserId, store)) return;
     await handle(message, webClient);
   });
 

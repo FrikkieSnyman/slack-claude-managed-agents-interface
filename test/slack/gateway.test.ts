@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { ThreadSessionStore } from "../../src/store/thread-session-store.js";
-import { handleInboundMessage, deriveThreadKey } from "../../src/slack/gateway.js";
+import { handleInboundMessage, deriveThreadKey, shouldHandleMessage } from "../../src/slack/gateway.js";
 import type { CmaClient } from "../../src/cma/client.js";
 
 interface FakeDaemon {
@@ -45,6 +45,102 @@ describe("deriveThreadKey", () => {
     expect(
       deriveThreadKey({ team: "T", channel: "D1", ts: "10.0", thread_ts: "5.0", channel_type: "im" }),
     ).toEqual({ teamId: "T", channelId: "D1", threadTs: "5.0" });
+  });
+});
+
+describe("shouldHandleMessage", () => {
+  let store: ThreadSessionStore;
+  beforeEach(() => {
+    const db = new Database(":memory:");
+    store = new ThreadSessionStore(db);
+  });
+
+  it("handles a plain DM", () => {
+    expect(
+      shouldHandleMessage(
+        { team: "T", channel: "D1", ts: "10.0", channel_type: "im", text: "hi" },
+        "BOT",
+        store,
+      ),
+    ).toBe(true);
+  });
+
+  it("skips messages with any subtype", () => {
+    expect(
+      shouldHandleMessage(
+        { team: "T", channel: "D1", ts: "10.0", channel_type: "im", text: "hi", subtype: "message_changed" },
+        "BOT",
+        store,
+      ),
+    ).toBe(false);
+  });
+
+  it("skips bot-authored messages", () => {
+    expect(
+      shouldHandleMessage(
+        { team: "T", channel: "D1", ts: "10.0", channel_type: "im", text: "hi", bot_id: "B123" },
+        "BOT",
+        store,
+      ),
+    ).toBe(false);
+  });
+
+  it("skips messages containing the bot's own @mention (app_mention handles them)", () => {
+    expect(
+      shouldHandleMessage(
+        { team: "T", channel: "C", ts: "10.0", channel_type: "channel", text: "<@BOT> hi", thread_ts: "5.0" },
+        "BOT",
+        store,
+      ),
+    ).toBe(false);
+  });
+
+  it("handles a channel thread reply when a session exists for that thread", () => {
+    store.upsert({
+      teamId: "T", channelId: "C", threadTs: "5.0",
+      sessionId: "sesn_1", lastStatus: "idle",
+    });
+    expect(
+      shouldHandleMessage(
+        { team: "T", channel: "C", ts: "10.0", channel_type: "channel", text: "follow-up", thread_ts: "5.0" },
+        "BOT",
+        store,
+      ),
+    ).toBe(true);
+  });
+
+  it("skips a channel thread reply when no session exists for that thread", () => {
+    expect(
+      shouldHandleMessage(
+        { team: "T", channel: "C", ts: "10.0", channel_type: "channel", text: "follow-up", thread_ts: "5.0" },
+        "BOT",
+        store,
+      ),
+    ).toBe(false);
+  });
+
+  it("skips a channel thread reply when the session is terminated", () => {
+    store.upsert({
+      teamId: "T", channelId: "C", threadTs: "5.0",
+      sessionId: "sesn_dead", lastStatus: "terminated",
+    });
+    expect(
+      shouldHandleMessage(
+        { team: "T", channel: "C", ts: "10.0", channel_type: "channel", text: "follow-up", thread_ts: "5.0" },
+        "BOT",
+        store,
+      ),
+    ).toBe(false);
+  });
+
+  it("skips a top-level channel message (no thread_ts) — app_mention is the only channel entry", () => {
+    expect(
+      shouldHandleMessage(
+        { team: "T", channel: "C", ts: "10.0", channel_type: "channel", text: "hello" },
+        "BOT",
+        store,
+      ),
+    ).toBe(false);
   });
 });
 
