@@ -171,7 +171,7 @@ describe("handleInboundMessage", () => {
       client,
       getOrCreate: getOrCreate as unknown as (id: string) => FakeDaemon,
       postPlaceholder,
-      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null },
+      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null, githubRepo: null },
     });
 
     expect(client.createSession).toHaveBeenCalledTimes(1);
@@ -208,7 +208,7 @@ describe("handleInboundMessage", () => {
       client,
       getOrCreate,
       postPlaceholder,
-      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null },
+      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null, githubRepo: null },
     };
 
     await Promise.all([
@@ -236,7 +236,7 @@ describe("handleInboundMessage", () => {
       client,
       getOrCreate: getOrCreate as unknown as (id: string) => FakeDaemon,
       postPlaceholder,
-      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null },
+      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null, githubRepo: null },
     });
 
     expect(store.findByThread({ teamId: "T", channelId: "C", threadTs: "5.0" })?.lastStatus).toBe("running");
@@ -264,7 +264,7 @@ describe("handleInboundMessage", () => {
       client,
       getOrCreate: getOrCreate as unknown as (id: string) => FakeDaemon,
       postPlaceholder,
-      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null },
+      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null, githubRepo: null },
     });
 
     expect(client.createSession).not.toHaveBeenCalled();

@@ -2,7 +2,7 @@ import bolt from "@slack/bolt";
 import type { CmaClient } from "../cma/client.js";
 import type { SessionDaemon, SlackWriter } from "../cma/session-daemon.js";
 import { ThreadSessionStore, type ThreadKey } from "../store/thread-session-store.js";
-import type { Config } from "../config.js";
+import type { Config, GithubRepoConfig } from "../config.js";
 import { logger } from "../logger.js";
 
 const { App } = bolt;
@@ -55,6 +55,7 @@ export interface HandleArgs {
     environmentId: string;
     vaultIds: string[];
     memoryStoreId: string | null;
+    githubRepo: GithubRepoConfig | null;
   };
 }
 
@@ -86,6 +87,7 @@ async function doHandle(args: HandleArgs): Promise<void> {
       environmentId: cmaConfig.environmentId,
       vaultIds: cmaConfig.vaultIds,
       memoryStoreId: cmaConfig.memoryStoreId,
+      githubRepo: cmaConfig.githubRepo,
     });
     sessionId = created.id;
     store.upsert({ ...key, sessionId, lastStatus: "idle" });
@@ -151,6 +153,7 @@ export function buildSlackApp(deps: GatewayDeps): bolt.App {
           environmentId: config.cma.environmentId,
           vaultIds: config.cma.vaultIds,
           memoryStoreId: config.cma.memoryStoreId,
+          githubRepo: config.cma.githubRepo,
         },
       });
     } catch (err) {

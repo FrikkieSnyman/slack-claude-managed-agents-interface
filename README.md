@@ -34,6 +34,18 @@ npm run dev
 
 See `.env.example`. Required: `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_SIGNING_SECRET`, `ANTHROPIC_API_KEY`, `CMA_AGENT_ID`, `CMA_ENVIRONMENT_ID`. Optional: `CMA_VAULT_IDS` (comma-separated), `CMA_MEMORY_STORE_ID`, `DATABASE_PATH`, `LOG_LEVEL`, `DAEMON_IDLE_TTL_SECONDS`, `OPS_CHANNEL_ID`.
 
+### Mounting a GitHub repo
+
+If set, every new CMA session mounts the repo into its container (default at `/workspace/<repo-name>`):
+
+- `CMA_GITHUB_REPO_URL` — e.g. `https://github.com/owner/repo`
+- `CMA_GITHUB_TOKEN` — PAT or fine-grained token with `Contents: read` on the repo. Required when URL is set.
+- `CMA_GITHUB_BRANCH` — optional; defaults to the repo's default branch
+- `CMA_GITHUB_COMMIT` — optional; pin to a specific SHA. Mutually exclusive with `CMA_GITHUB_BRANCH`.
+- `CMA_GITHUB_MOUNT_PATH` — optional; override the default mount path
+
+Existing sessions keep their original mount; only new sessions pick up changes. Restart the server after changing these to be safe.
+
 ## Tests
 
 ```bash
