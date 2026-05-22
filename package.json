@@ -10,7 +10,8 @@
     "build": "tsc -p .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "upload-skills": "tsx scripts/upload-skills.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
