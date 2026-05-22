@@ -1,5 +1,7 @@
 # slack-claude-managed-agents-interface
 
+> ⚠️ **Disclaimer:** this project is fully vibecoded — written end-to-end by an LLM with human direction. Read the code before trusting it in production.
+
 Single-process Node/TypeScript server that bridges a Slack workspace to a Claude Managed Agents (CMA) agent.
 
 - **Input**: Slack app mentions and DMs
@@ -89,9 +91,7 @@ systemd loads `/etc/slack-cma/env` directly via `EnvironmentFile=`. You do not n
 
 ```bash
 # install Node 20 (Debian/Ubuntu via NodeSource — lands at /usr/bin/node)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
+# create user
 sudo useradd -r -d /opt/slack-cma -s /usr/sbin/nologin slack-cma
 sudo mkdir -p /opt/slack-cma /var/lib/slack-cma /etc/slack-cma
 sudo chown slack-cma: /opt/slack-cma /var/lib/slack-cma
