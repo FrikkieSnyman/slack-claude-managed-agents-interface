@@ -8,6 +8,7 @@ Type=simple
 User=slack-cma
 WorkingDirectory=/opt/slack-cma
 EnvironmentFile=/etc/slack-cma/env
+NoNewPrivileges=yes
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=5

@@ -88,6 +88,10 @@ systemd loads `/etc/slack-cma/env` directly via `EnvironmentFile=`. You do not n
 ### One-time setup (as root)
 
 ```bash
+# install Node 20 (Debian/Ubuntu via NodeSource — lands at /usr/bin/node)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
 sudo useradd -r -d /opt/slack-cma -s /usr/sbin/nologin slack-cma
 sudo mkdir -p /opt/slack-cma /var/lib/slack-cma /etc/slack-cma
 sudo chown slack-cma: /opt/slack-cma /var/lib/slack-cma
