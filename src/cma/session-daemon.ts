@@ -123,23 +123,27 @@ export class SessionDaemon {
   }
 
   private async runStream(): Promise<void> {
-    while (true) {
-      try {
-        const stream = await this.client.streamEvents(this.sessionId);
-        await this.consume(stream);
-        this.reconnectAttempts = 0;
-        if (this.lastStatus === "terminated") return;
-        return;
-      } catch (err) {
-        logger.warn({ err, sessionId: this.sessionId, attempt: this.reconnectAttempts }, "stream error");
-        if (!this.reconnect || this.reconnectAttempts >= 5) {
-          logger.error({ sessionId: this.sessionId }, "giving up on stream reconnect");
+    try {
+      while (true) {
+        try {
+          const stream = await this.client.streamEvents(this.sessionId);
+          await this.consume(stream);
+          this.reconnectAttempts = 0;
+          if (this.lastStatus === "terminated") return;
           return;
+        } catch (err) {
+          logger.warn({ err, sessionId: this.sessionId, attempt: this.reconnectAttempts }, "stream error");
+          if (!this.reconnect || this.reconnectAttempts >= 5) {
+            logger.error({ sessionId: this.sessionId }, "giving up on stream reconnect");
+            return;
+          }
+          const delay = Math.min(30_000, 1000 * Math.pow(2, this.reconnectAttempts));
+          this.reconnectAttempts++;
+          await new Promise((r) => setTimeout(r, delay));
         }
-        const delay = Math.min(30_000, 1000 * Math.pow(2, this.reconnectAttempts));
-        this.reconnectAttempts++;
-        await new Promise((r) => setTimeout(r, delay));
       }
+    } finally {
+      this.streamLoop = null;
     }
   }
 

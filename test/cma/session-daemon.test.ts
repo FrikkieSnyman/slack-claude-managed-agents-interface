@@ -172,4 +172,37 @@ describe("SessionDaemon", () => {
 
     expect(daemon.isIdle()).toBe(true);
   });
+
+  it("clears streamLoop when stream ends without a terminal status, allowing next turn to spawn a fresh stream", async () => {
+    // Stream that ends without idle / terminated
+    const events: RenderableEvent[] = [
+      { type: "session.status_running" },
+      { type: "agent.tool_use", id: "ev1", name: "bash", input: { command: "ls" } },
+    ];
+    const client = makeFakeClient(events);
+    const slack = makeSlackWriter();
+
+    const daemon = new SessionDaemon({
+      sessionId: "sesn_x",
+      client,
+      slack,
+      onStatusChange: vi.fn(),
+      coalesceMs: 50,
+      reconnect: false,
+    });
+
+    daemon.attachToTurn("ts_1");
+    await daemon.sendUserMessage("first");
+    await vi.advanceTimersByTimeAsync(500);
+
+    // Wait until streamEvents was called once and runStream has time to exit naturally
+    await vi.advanceTimersByTimeAsync(500);
+
+    daemon.attachToTurn("ts_2");
+    await daemon.sendUserMessage("second");
+    await vi.advanceTimersByTimeAsync(500);
+
+    // streamEvents should have been invoked again for the second turn
+    expect(client.streamEvents).toHaveBeenCalledTimes(2);
+  });
 });

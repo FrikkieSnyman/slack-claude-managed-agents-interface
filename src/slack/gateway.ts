@@ -38,7 +38,23 @@ export interface HandleArgs {
   };
 }
 
+const threadLocks = new Map<string, Promise<unknown>>();
+
 export async function handleInboundMessage(args: HandleArgs): Promise<void> {
+  const lockKey = `${args.key.teamId}:${args.key.channelId}:${args.key.threadTs}`;
+  const prev = threadLocks.get(lockKey) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(() => doHandle(args));
+  threadLocks.set(lockKey, next);
+  try {
+    await next;
+  } finally {
+    if (threadLocks.get(lockKey) === next) {
+      threadLocks.delete(lockKey);
+    }
+  }
+}
+
+async function doHandle(args: HandleArgs): Promise<void> {
   const { key, text, store, client, getOrCreate, postPlaceholder, cmaConfig } = args;
 
   let row = store.findByThread(key);
@@ -63,6 +79,7 @@ export async function handleInboundMessage(args: HandleArgs): Promise<void> {
   const daemon = getOrCreate(sessionId);
   daemon.attachToTurn(placeholderTs);
   await daemon.sendUserMessage(text);
+  store.setStatus(sessionId, "running");
 }
 
 export interface GatewayDeps {

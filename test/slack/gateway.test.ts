@@ -89,6 +89,63 @@ describe("handleInboundMessage", () => {
     expect(daemon.sendUserMessage).toHaveBeenCalledWith("hello");
   });
 
+  it("serializes concurrent handleInboundMessage for the same thread — single createSession", async () => {
+    const client = fakeClient();
+    let daemonCount = 0;
+    const daemons = new Map<string, FakeDaemon>();
+    const getOrCreate = (sessionId: string): FakeDaemon => {
+      let d = daemons.get(sessionId);
+      if (!d) {
+        d = { attachToTurn: vi.fn(), sendUserMessage: vi.fn(async () => {}) };
+        daemons.set(sessionId, d);
+        daemonCount++;
+      }
+      return d;
+    };
+    const postPlaceholder = vi.fn(async () => `ts-${Math.random()}`);
+
+    const key = { teamId: "T", channelId: "C", threadTs: "5.0" };
+    const args = {
+      key,
+      text: "concurrent",
+      store,
+      client,
+      getOrCreate,
+      postPlaceholder,
+      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null },
+    };
+
+    await Promise.all([
+      handleInboundMessage(args),
+      handleInboundMessage(args),
+      handleInboundMessage(args),
+    ]);
+
+    expect(client.createSession).toHaveBeenCalledTimes(1);
+    expect(daemonCount).toBe(1);
+  });
+
+  it("sets row status to running after sendUserMessage so restartAll picks it up", async () => {
+    const client = fakeClient();
+    const getOrCreate = vi.fn((sessionId: string): FakeDaemon => ({
+      attachToTurn: vi.fn(),
+      sendUserMessage: vi.fn(async () => {}),
+    }));
+    const postPlaceholder = vi.fn(async () => "ph-ts");
+
+    await handleInboundMessage({
+      key: { teamId: "T", channelId: "C", threadTs: "5.0" },
+      text: "x",
+      store,
+      client,
+      getOrCreate: getOrCreate as unknown as (id: string) => FakeDaemon,
+      postPlaceholder,
+      cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null },
+    });
+
+    expect(store.findByThread({ teamId: "T", channelId: "C", threadTs: "5.0" })?.lastStatus).toBe("running");
+  });
+
   it("reuses existing session and posts a new placeholder per turn", async () => {
     store.upsert({
       teamId: "T", channelId: "C", threadTs: "5.0",
