@@ -46,6 +46,39 @@ If set, every new CMA session mounts the repo into its container (default at `/w
 
 Existing sessions keep their original mount; only new sessions pick up changes. Restart the server after changing these to be safe.
 
+## Uploading custom skills
+
+Skills give the CMA agent reusable, domain-specific expertise. Edit `skills.config.json` to declare which skills to upload, then:
+
+```bash
+npm run upload-skills              # uses ./skills.config.json
+npm run upload-skills -- -c path/to/other.json   # override path
+```
+
+The script is idempotent — it lists existing workspace skills first and skips any whose `displayTitle` already exists. The upload prints `skill_…` IDs you then attach to your CMA agent's `skills` array (`{ "type": "custom", "skill_id": "skill_…", "version": "latest" }`) via the Anthropic console or API.
+
+`skills.config.json` schema:
+
+```json
+{
+  "skills": [
+    {
+      "displayTitle": "Brainstorming",
+      "source": { "type": "github", "repo": "owner/repo", "path": "skills/brainstorming" }
+    },
+    {
+      "displayTitle": "My Custom Skill",
+      "source": { "type": "local", "path": "./my-skills/custom" }
+    }
+  ]
+}
+```
+
+- `source.type: "github"` — clones the repo (`--depth 1`) and uploads `<repo>/<path>`. Optional `ref` pins to a branch or tag.
+- `source.type: "local"` — uploads from a local directory. Relative paths resolve against the config file's location.
+
+Each skill directory must contain a `SKILL.md` with valid YAML frontmatter (`name`, `description`). The folder name uploaded to Anthropic is taken from the `name` field, not the on-disk folder name.
+
 ## Tests
 
 ```bash
