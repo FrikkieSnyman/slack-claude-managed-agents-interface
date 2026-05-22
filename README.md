@@ -79,6 +79,53 @@ The script is idempotent — it lists existing workspace skills first and skips 
 
 Each skill directory must contain a `SKILL.md` with valid YAML frontmatter (`name`, `description`). The folder name uploaded to Anthropic is taken from the `name` field, not the on-disk folder name.
 
+## Production deploy
+
+Targets a single Linux VM (Debian/Ubuntu) running under systemd. No Docker.
+
+### One-time setup (as root)
+
+```bash
+sudo useradd -r -d /opt/slack-cma -s /usr/sbin/nologin slack-cma
+sudo mkdir -p /opt/slack-cma /var/lib/slack-cma /etc/slack-cma
+sudo chown slack-cma: /opt/slack-cma /var/lib/slack-cma
+
+# install code as the service user (-H sets HOME=/opt/slack-cma so npm's cache works)
+cd /opt/slack-cma
+sudo -u slack-cma -H git clone <repo-url> .
+sudo -u slack-cma -H npm ci
+sudo -u slack-cma -H npm run build
+
+# env file — mirrors .env.example, loaded by systemd at boot
+sudo cp .env.example /etc/slack-cma/env
+sudo chmod 600 /etc/slack-cma/env
+sudo chown slack-cma: /etc/slack-cma/env
+# edit /etc/slack-cma/env: fill in tokens; set DATABASE_PATH=/var/lib/slack-cma/sessions.db
+
+# systemd
+sudo cp deploy/slack-cma.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now slack-cma
+sudo journalctl -u slack-cma -f
+```
+
+### Update flow
+
+```bash
+cd /opt/slack-cma
+sudo -u slack-cma -H git pull
+sudo -u slack-cma -H npm ci
+sudo -u slack-cma -H npm run build
+sudo systemctl restart slack-cma
+```
+
+### Notes
+
+- `better-sqlite3` ships prebuilt binaries for Linux x64/arm64 + Node 20, so `npm ci` does not need a C/C++ toolchain in the common case. If it does (unusual arch, future Node version without a prebuilt), install `build-essential` and `python3` first.
+- Logs are JSON on stdout and captured by journald. Query with `journalctl -u slack-cma`.
+- `DATABASE_PATH` must point to a directory writable by the `slack-cma` user. The convention above uses `/var/lib/slack-cma/sessions.db`.
+- The daemon registry restarts in-flight sessions on boot, so `systemctl restart slack-cma` mid-session resumes the placeholder Slack message updates.
+
 ## Tests
 
 ```bash
