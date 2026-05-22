@@ -14,7 +14,7 @@ describe("LogBuffer", () => {
     const buf = new LogBuffer();
     buf.append("event-1", "bash", "ls -la");
     buf.markDone("event-1");
-    expect(buf.entries[0].done).toBe(true);
+    expect(buf.entries[0]?.done).toBe(true);
   });
 
   it("markDone on unknown id is no-op", () => {
