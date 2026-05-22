@@ -9,6 +9,16 @@ export interface EventStream extends AsyncIterable<RenderableEvent> {
 export interface CmaSessionRef {
   id: string;
   status: "idle" | "running" | "rescheduling" | "terminated";
+  archived: boolean;
+}
+
+export function isInvalidSessionError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const status = (err as { status?: unknown }).status;
+  if (status === 404 || status === 410) return true;
+  if (status !== 400 && status !== 409) return false;
+  const message = String((err as { message?: unknown }).message ?? "").toLowerCase();
+  return message.includes("archive") || message.includes("terminated") || message.includes("deleted");
 }
 
 export interface CreateSessionInput {
@@ -86,12 +96,20 @@ export function createCmaClient(apiKey: string): CmaClient {
         ...(vaultIds.length > 0 ? { vault_ids: vaultIds } : {}),
         ...(resources.length > 0 ? { resources: resources as never } : {}),
       });
-      return { id: session.id, status: session.status as CmaSessionRef["status"] };
+      return {
+        id: session.id,
+        status: session.status as CmaSessionRef["status"],
+        archived: session.archived_at !== null,
+      };
     },
 
     async retrieveSession(sessionId) {
       const session = await anthropic.beta.sessions.retrieve(sessionId);
-      return { id: session.id, status: session.status as CmaSessionRef["status"] };
+      return {
+        id: session.id,
+        status: session.status as CmaSessionRef["status"],
+        archived: session.archived_at !== null,
+      };
     },
 
     async sendUserMessage(sessionId, text) {

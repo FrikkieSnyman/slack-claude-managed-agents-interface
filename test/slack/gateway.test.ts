@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { ThreadSessionStore } from "../../src/store/thread-session-store.js";
-import { handleInboundMessage, deriveThreadKey, shouldHandleMessage } from "../../src/slack/gateway.js";
+import { handleInboundMessage, deriveThreadKey, shouldHandleMessage, InvalidSessionError } from "../../src/slack/gateway.js";
 import type { CmaClient } from "../../src/cma/client.js";
 
 interface FakeDaemon {
@@ -11,8 +11,8 @@ interface FakeDaemon {
 
 function fakeClient(): CmaClient {
   return {
-    createSession: vi.fn(async () => ({ id: "sesn_new", status: "idle" as const })),
-    retrieveSession: vi.fn(async () => ({ id: "sesn_new", status: "idle" as const })),
+    createSession: vi.fn(async () => ({ id: "sesn_new", status: "idle" as const, archived: false })),
+    retrieveSession: vi.fn(async () => ({ id: "sesn_new", status: "idle" as const, archived: false })),
     sendUserMessage: vi.fn(async () => {}),
     streamEvents: vi.fn(async () => ({
       async *[Symbol.asyncIterator]() {},
@@ -272,5 +272,34 @@ describe("handleInboundMessage", () => {
     expect(store.findByThread({ teamId: "T", channelId: "C", threadTs: "5.0" })?.currentPlaceholderTs).toBe(
       "new-placeholder-ts",
     );
+  });
+
+  it("marks session terminated and throws InvalidSessionError when sendUserMessage fails with archive error", async () => {
+    store.upsert({
+      teamId: "T", channelId: "C", threadTs: "5.0",
+      sessionId: "sesn_archived", lastStatus: "idle",
+    });
+    const client = fakeClient();
+    const archivedError = Object.assign(new Error("Session has been archived"), { status: 400 });
+    const fakeDaemon: FakeDaemon = {
+      attachToTurn: vi.fn(),
+      sendUserMessage: vi.fn(async () => { throw archivedError; }),
+    };
+    const getOrCreate = vi.fn(() => fakeDaemon);
+    const postPlaceholder = vi.fn(async () => "ph-ts-x");
+
+    await expect(
+      handleInboundMessage({
+        key: { teamId: "T", channelId: "C", threadTs: "5.0" },
+        text: "hi",
+        store,
+        client,
+        getOrCreate: getOrCreate as unknown as (id: string) => FakeDaemon,
+        postPlaceholder,
+        cmaConfig: { agentId: "ag", environmentId: "env", vaultIds: [], memoryStoreId: null, githubRepo: null },
+      }),
+    ).rejects.toBeInstanceOf(InvalidSessionError);
+
+    expect(store.findByThread({ teamId: "T", channelId: "C", threadTs: "5.0" })?.lastStatus).toBe("terminated");
   });
 });

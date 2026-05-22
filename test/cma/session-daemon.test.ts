@@ -43,8 +43,8 @@ function makeFakeStream(events: RenderableEvent[]): EventStream {
 
 function makeFakeClient(streamEvents: RenderableEvent[]): CmaClient {
   return {
-    createSession: vi.fn(async () => ({ id: "sesn_x", status: "idle" as const })),
-    retrieveSession: vi.fn(async () => ({ id: "sesn_x", status: "running" as const })),
+    createSession: vi.fn(async () => ({ id: "sesn_x", status: "idle" as const, archived: false })),
+    retrieveSession: vi.fn(async () => ({ id: "sesn_x", status: "running" as const, archived: false })),
     sendUserMessage: vi.fn(async () => {}),
     streamEvents: vi.fn(async () => makeFakeStream(streamEvents)),
     listEvents: vi.fn(() => ({ async *[Symbol.asyncIterator]() {} })),

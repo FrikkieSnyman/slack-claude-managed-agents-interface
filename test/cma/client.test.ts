@@ -1,5 +1,28 @@
 import { describe, it, expect } from "vitest";
-import { buildSessionResources } from "../../src/cma/client.js";
+import { buildSessionResources, isInvalidSessionError } from "../../src/cma/client.js";
+
+describe("isInvalidSessionError", () => {
+  it("returns false for non-objects", () => {
+    expect(isInvalidSessionError(null)).toBe(false);
+    expect(isInvalidSessionError("oops")).toBe(false);
+  });
+
+  it("returns true on 404 and 410", () => {
+    expect(isInvalidSessionError({ status: 404 })).toBe(true);
+    expect(isInvalidSessionError({ status: 410 })).toBe(true);
+  });
+
+  it("returns true on 400/409 only when message mentions archive/terminated/deleted", () => {
+    expect(isInvalidSessionError({ status: 400, message: "Session has been archived" })).toBe(true);
+    expect(isInvalidSessionError({ status: 409, message: "Session was deleted" })).toBe(true);
+    expect(isInvalidSessionError({ status: 400, message: "session is terminated" })).toBe(true);
+    expect(isInvalidSessionError({ status: 400, message: "validation error" })).toBe(false);
+  });
+
+  it("returns false for 500-class errors", () => {
+    expect(isInvalidSessionError({ status: 500, message: "archived" })).toBe(false);
+  });
+});
 
 describe("buildSessionResources", () => {
   it("returns empty array when no memory store and no github repo", () => {

@@ -55,6 +55,12 @@ export class DaemonRegistry {
       rows.map(async (row) => {
         try {
           const remote = await this.client.retrieveSession(row.sessionId);
+          if (remote.archived) {
+            this.store.setStatus(row.sessionId, "terminated");
+            this.map.delete(row.sessionId);
+            logger.info({ sessionId: row.sessionId }, "restartAll: session archived externally, marking terminated");
+            return;
+          }
           if (remote.status === "running") {
             this.getOrCreate(row.sessionId);
             return;

@@ -1,9 +1,16 @@
 import bolt from "@slack/bolt";
-import type { CmaClient } from "../cma/client.js";
+import { isInvalidSessionError, type CmaClient } from "../cma/client.js";
 import type { SessionDaemon, SlackWriter } from "../cma/session-daemon.js";
 import { ThreadSessionStore, type ThreadKey } from "../store/thread-session-store.js";
 import type { Config, GithubRepoConfig } from "../config.js";
 import { logger } from "../logger.js";
+
+export class InvalidSessionError extends Error {
+  constructor(public readonly placeholderTs: string | null) {
+    super("CMA session is no longer available");
+    this.name = "InvalidSessionError";
+  }
+}
 
 const { App } = bolt;
 
@@ -100,7 +107,15 @@ async function doHandle(args: HandleArgs): Promise<void> {
 
   const daemon = getOrCreate(sessionId);
   daemon.attachToTurn(placeholderTs);
-  await daemon.sendUserMessage(text);
+  try {
+    await daemon.sendUserMessage(text);
+  } catch (err) {
+    if (isInvalidSessionError(err)) {
+      store.setStatus(sessionId, "terminated");
+      throw new InvalidSessionError(placeholderTs);
+    }
+    throw err;
+  }
   store.setStatus(sessionId, "running");
 }
 
@@ -157,6 +172,19 @@ export function buildSlackApp(deps: GatewayDeps): bolt.App {
         },
       });
     } catch (err) {
+      if (err instanceof InvalidSessionError) {
+        logger.info({ channel: raw.channel }, "session unavailable (archived or deleted); telling user to retry");
+        const message = "⚠️ This session is no longer available (it was archived or deleted). Reply again to start a new one.";
+        if (err.placeholderTs) {
+          await slackClient.chat.update({ channel: raw.channel, ts: err.placeholderTs, text: message }).catch(() => {});
+        }
+        await slackClient.chat.postMessage({
+          channel: raw.channel,
+          thread_ts: raw.thread_ts ?? raw.ts,
+          text: message,
+        });
+        return;
+      }
       logger.error({ err, channel: raw.channel }, "handleInboundMessage failed");
       await slackClient.chat.postMessage({
         channel: raw.channel,

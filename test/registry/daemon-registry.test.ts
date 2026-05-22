@@ -4,10 +4,13 @@ import { ThreadSessionStore } from "../../src/store/thread-session-store.js";
 import { DaemonRegistry } from "../../src/registry/daemon-registry.js";
 import type { CmaClient } from "../../src/cma/client.js";
 
-function fakeClient(retrieve: (id: string) => Promise<{ id: string; status: "idle" | "running" | "terminated" }>): CmaClient {
+function fakeClient(retrieve: (id: string) => Promise<{ id: string; status: "idle" | "running" | "terminated"; archived?: boolean }>): CmaClient {
   return {
-    createSession: vi.fn(async () => ({ id: "sesn_new", status: "idle" as const })),
-    retrieveSession: vi.fn(async (id: string) => retrieve(id)),
+    createSession: vi.fn(async () => ({ id: "sesn_new", status: "idle" as const, archived: false })),
+    retrieveSession: vi.fn(async (id: string) => {
+      const r = await retrieve(id);
+      return { ...r, archived: r.archived ?? false };
+    }),
     sendUserMessage: vi.fn(async () => {}),
     streamEvents: vi.fn(async () => ({
       async *[Symbol.asyncIterator]() {},
@@ -62,6 +65,32 @@ describe("DaemonRegistry", () => {
     expect(reg.has("sesn_running")).toBe(true);
     expect(reg.has("sesn_idle")).toBe(false);
     expect(store.findBySessionId("sesn_idle")?.lastStatus).toBe("idle");
+  });
+
+  it("restartAll silently marks archived sessions as terminated and does not post to Slack", async () => {
+    store.upsert({
+      teamId: "T", channelId: "C1", threadTs: "1.1",
+      sessionId: "sesn_archived", lastStatus: "running",
+    });
+    const slackWriters: ReturnType<typeof makeSlackWriter>[] = [];
+    const client = fakeClient(async () => ({
+      id: "sesn_archived",
+      status: "idle",
+      archived: true,
+    }));
+    const reg = new DaemonRegistry(client, store, () => {
+      const w = makeSlackWriter();
+      slackWriters.push(w);
+      return w;
+    });
+
+    await reg.restartAll();
+
+    expect(store.findBySessionId("sesn_archived")?.lastStatus).toBe("terminated");
+    expect(reg.has("sesn_archived")).toBe(false);
+    if (slackWriters[0]) {
+      expect(slackWriters[0].postError).not.toHaveBeenCalled();
+    }
   });
 
   it("restartAll posts terminated message for sessions CMA reports terminated", async () => {
