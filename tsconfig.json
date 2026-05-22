@@ -9,10 +9,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": ".",
-    "declaration": false,
-    "sourceMap": true
+    "declaration": false
   },
   "include": ["src/**/*", "test/**/*", "scripts/**/*"]
 }
