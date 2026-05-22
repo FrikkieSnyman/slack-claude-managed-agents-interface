@@ -83,6 +83,8 @@ Each skill directory must contain a `SKILL.md` with valid YAML frontmatter (`nam
 
 Targets a single Linux VM (Debian/Ubuntu) running under systemd. No Docker.
 
+systemd loads `/etc/slack-cma/env` directly via `EnvironmentFile=`. You do not need a `.env` file in `/opt/slack-cma` — only the dev workflow uses one.
+
 ### One-time setup (as root)
 
 ```bash
@@ -123,7 +125,7 @@ sudo systemctl restart slack-cma
 
 - `better-sqlite3` ships prebuilt binaries for Linux x64/arm64 + Node 20, so `npm ci` does not need a C/C++ toolchain in the common case. If it does (unusual arch, future Node version without a prebuilt), install `build-essential` and `python3` first.
 - Logs are JSON on stdout and captured by journald. Query with `journalctl -u slack-cma`.
-- `DATABASE_PATH` must point to a directory writable by the `slack-cma` user. The convention above uses `/var/lib/slack-cma/sessions.db`.
+- `DATABASE_PATH` is the SQLite file path; its parent directory must be writable by the `slack-cma` user. The convention above uses `/var/lib/slack-cma/sessions.db`.
 - The daemon registry restarts in-flight sessions on boot, so `systemctl restart slack-cma` mid-session resumes the placeholder Slack message updates.
 
 ## Tests
