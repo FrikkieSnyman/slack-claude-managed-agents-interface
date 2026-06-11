@@ -3,6 +3,8 @@ import { SessionDaemon } from "../../src/cma/session-daemon.js";
 import type { CmaClient, EventStream } from "../../src/cma/client.js";
 import type { RenderableEvent } from "../../src/cma/event-types.js";
 
+const um = (text: string) => ({ text, images: [] });
+
 interface SlackUpdate { messageTs: string; text: string }
 interface SlackPost { text: string }
 
@@ -76,11 +78,11 @@ describe("SessionDaemon", () => {
     });
 
     daemon.attachToTurn("ts_placeholder_1");
-    await daemon.sendUserMessage("hi");
+    await daemon.sendUserMessage(um("hi"));
     await vi.advanceTimersByTimeAsync(500);
     await daemon.waitForIdle();
 
-    expect(client.sendUserMessage).toHaveBeenCalledWith("sesn_x", "hi");
+    expect(client.sendUserMessage).toHaveBeenCalledWith("sesn_x", um("hi"));
     expect(slack.updates.length).toBeGreaterThanOrEqual(1);
     const lastUpdate = slack.updates.at(-1)!;
     expect(lastUpdate.messageTs).toBe("ts_placeholder_1");
@@ -109,7 +111,7 @@ describe("SessionDaemon", () => {
     });
 
     daemon.attachToTurn("ts_placeholder_1");
-    await daemon.sendUserMessage("hi");
+    await daemon.sendUserMessage(um("hi"));
     await vi.advanceTimersByTimeAsync(500);
     await daemon.waitForTerminal();
 
@@ -136,11 +138,11 @@ describe("SessionDaemon", () => {
     });
 
     daemon.attachToTurn("ts_turn_1");
-    await daemon.sendUserMessage("first");
+    await daemon.sendUserMessage(um("first"));
     await vi.advanceTimersByTimeAsync(200);
 
     daemon.attachToTurn("ts_turn_2");
-    await daemon.sendUserMessage("second");
+    await daemon.sendUserMessage(um("second"));
     await vi.advanceTimersByTimeAsync(200);
 
     const ts1Updates = slack.updates.filter((u) => u.messageTs === "ts_turn_1");
@@ -166,7 +168,7 @@ describe("SessionDaemon", () => {
     });
 
     daemon.attachToTurn("ts1");
-    await daemon.sendUserMessage("hi");
+    await daemon.sendUserMessage(um("hi"));
     await vi.advanceTimersByTimeAsync(500);
     await daemon.waitForIdle();
 
@@ -192,14 +194,14 @@ describe("SessionDaemon", () => {
     });
 
     daemon.attachToTurn("ts_1");
-    await daemon.sendUserMessage("first");
+    await daemon.sendUserMessage(um("first"));
     await vi.advanceTimersByTimeAsync(500);
 
     // Wait until streamEvents was called once and runStream has time to exit naturally
     await vi.advanceTimersByTimeAsync(500);
 
     daemon.attachToTurn("ts_2");
-    await daemon.sendUserMessage("second");
+    await daemon.sendUserMessage(um("second"));
     await vi.advanceTimersByTimeAsync(500);
 
     // streamEvents should have been invoked again for the second turn

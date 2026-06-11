@@ -1,4 +1,4 @@
-import type { CmaClient, EventStream } from "./client.js";
+import type { CmaClient, EventStream, UserMessage } from "./client.js";
 import {
   type RenderableEvent,
   isToolUseEvent,
@@ -86,12 +86,12 @@ export class SessionDaemon {
     this.scheduleRender("running");
   }
 
-  async sendUserMessage(text: string): Promise<void> {
+  async sendUserMessage(message: UserMessage): Promise<void> {
     this.lastActivity = Date.now();
     if (!this.streamLoop) {
       this.streamLoop = this.runStream();
     }
-    await this.client.sendUserMessage(this.sessionId, text);
+    await this.client.sendUserMessage(this.sessionId, message);
   }
 
   isIdle(): boolean {
