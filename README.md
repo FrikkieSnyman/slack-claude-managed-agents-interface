@@ -7,6 +7,7 @@ Single-process Node/TypeScript server that bridges a Slack workspace to a Claude
 - **Input**: Slack app mentions and DMs
 - **Mapping**: one CMA session per Slack thread
 - **Progress UX**: edits a placeholder message with a running log of tool calls; posts a new message with the final answer (so the user gets a notification)
+- **Images**: images attached to a mention/DM/thread reply are forwarded to the agent (PNG/JPEG/GIF/WebP, ≤5 MB, ≤20 per message)
 
 ## Prerequisites
 
@@ -14,6 +15,7 @@ Single-process Node/TypeScript server that bridges a Slack workspace to a Claude
 - A configured CMA agent + environment (and optional vault / memory store)
 - A Slack app installed to your workspace with Socket Mode enabled and these bot scopes:
   - `app_mentions:read`, `chat:write`
+  - `files:read` (to download images attached to messages)
   - `im:history`, `im:read`, `im:write` (DMs)
   - `channels:history` (to receive in-thread follow-ups in public channels)
   - `groups:history` (optional — same for private channels the bot is invited to)
