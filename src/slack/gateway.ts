@@ -1,5 +1,6 @@
 import bolt from "@slack/bolt";
 import { isInvalidSessionError, type CmaClient } from "../cma/client.js";
+import { isSupportedImageFile, type SlackFile } from "./files.js";
 import type { SessionDaemon, SlackWriter } from "../cma/session-daemon.js";
 import { ThreadSessionStore, type ThreadKey } from "../store/thread-session-store.js";
 import type { Config, GithubRepoConfig } from "../config.js";
@@ -34,6 +35,7 @@ export interface MessageRoutingInput extends SlackEventCore {
   text?: string;
   bot_id?: string;
   subtype?: string;
+  files?: SlackFile[];
 }
 
 export function shouldHandleMessage(
@@ -41,9 +43,11 @@ export function shouldHandleMessage(
   botUserId: string | undefined,
   store: ThreadSessionStore,
 ): boolean {
-  if (raw.bot_id || raw.subtype) return false;
-  if (!raw.text) return false;
-  if (botUserId && raw.text.includes(`<@${botUserId}>`)) return false;
+  if (raw.bot_id) return false;
+  if (raw.subtype && raw.subtype !== "file_share") return false;
+  const hasImage = (raw.files ?? []).some(isSupportedImageFile);
+  if (!raw.text && !hasImage) return false;
+  if (botUserId && raw.text && raw.text.includes(`<@${botUserId}>`)) return false;
   if (raw.channel_type === "im") return true;
   if (!raw.thread_ts) return false;
   const row = store.findByThread(deriveThreadKey(raw));
