@@ -6,7 +6,7 @@ import type { CmaClient } from "../../src/cma/client.js";
 
 interface FakeDaemon {
   attachToTurn: (ts: string) => void;
-  sendUserMessage: (text: string) => Promise<void>;
+  sendUserMessage: (message: { text: string; images: [] }) => Promise<void>;
 }
 
 function fakeClient(): CmaClient {
@@ -142,6 +142,62 @@ describe("shouldHandleMessage", () => {
       ),
     ).toBe(false);
   });
+
+  it("handles a file_share reply with text in a thread with a session", () => {
+    store.upsert({ teamId: "T", channelId: "C", threadTs: "5.0", sessionId: "s1", lastStatus: "idle" });
+    expect(
+      shouldHandleMessage(
+        {
+          team: "T", channel: "C", ts: "10.0", channel_type: "channel", thread_ts: "5.0",
+          text: "see this", subtype: "file_share",
+          files: [{ mimetype: "image/png" }],
+        },
+        "BOT",
+        store,
+      ),
+    ).toBe(true);
+  });
+
+  it("handles an image-only file_share reply (no text)", () => {
+    store.upsert({ teamId: "T", channelId: "C", threadTs: "5.0", sessionId: "s1", lastStatus: "idle" });
+    expect(
+      shouldHandleMessage(
+        {
+          team: "T", channel: "C", ts: "10.0", channel_type: "channel", thread_ts: "5.0",
+          subtype: "file_share", files: [{ mimetype: "image/png" }],
+        },
+        "BOT",
+        store,
+      ),
+    ).toBe(true);
+  });
+
+  it("skips a file_share with no text and no supported image", () => {
+    store.upsert({ teamId: "T", channelId: "C", threadTs: "5.0", sessionId: "s1", lastStatus: "idle" });
+    expect(
+      shouldHandleMessage(
+        {
+          team: "T", channel: "C", ts: "10.0", channel_type: "channel", thread_ts: "5.0",
+          subtype: "file_share", files: [{ mimetype: "application/pdf" }],
+        },
+        "BOT",
+        store,
+      ),
+    ).toBe(false);
+  });
+
+  it("handles an image-only DM (creates a session downstream)", () => {
+    expect(
+      shouldHandleMessage(
+        {
+          team: "T", channel: "D1", ts: "10.0", channel_type: "im",
+          subtype: "file_share", files: [{ mimetype: "image/jpeg" }],
+        },
+        "BOT",
+        store,
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("handleInboundMessage", () => {
@@ -166,7 +222,7 @@ describe("handleInboundMessage", () => {
 
     await handleInboundMessage({
       key: { teamId: "T", channelId: "C", threadTs: "5.0" },
-      text: "hello",
+      message: { text: "hello", images: [] },
       store,
       client,
       getOrCreate: getOrCreate as unknown as (id: string) => FakeDaemon,
@@ -182,7 +238,7 @@ describe("handleInboundMessage", () => {
 
     const daemon = daemons.get("sesn_new")!;
     expect(daemon.attachToTurn).toHaveBeenCalledWith("placeholder-ts-1");
-    expect(daemon.sendUserMessage).toHaveBeenCalledWith("hello");
+    expect(daemon.sendUserMessage).toHaveBeenCalledWith({ text: "hello", images: [] });
   });
 
   it("serializes concurrent handleInboundMessage for the same thread — single createSession", async () => {
@@ -203,7 +259,7 @@ describe("handleInboundMessage", () => {
     const key = { teamId: "T", channelId: "C", threadTs: "5.0" };
     const args = {
       key,
-      text: "concurrent",
+      message: { text: "concurrent", images: [] as [] },
       store,
       client,
       getOrCreate,
@@ -231,7 +287,7 @@ describe("handleInboundMessage", () => {
 
     await handleInboundMessage({
       key: { teamId: "T", channelId: "C", threadTs: "5.0" },
-      text: "x",
+      message: { text: "x", images: [] },
       store,
       client,
       getOrCreate: getOrCreate as unknown as (id: string) => FakeDaemon,
@@ -259,7 +315,7 @@ describe("handleInboundMessage", () => {
 
     await handleInboundMessage({
       key: { teamId: "T", channelId: "C", threadTs: "5.0" },
-      text: "second turn",
+      message: { text: "second turn", images: [] },
       store,
       client,
       getOrCreate: getOrCreate as unknown as (id: string) => FakeDaemon,
@@ -268,7 +324,7 @@ describe("handleInboundMessage", () => {
     });
 
     expect(client.createSession).not.toHaveBeenCalled();
-    expect(daemons.get("sesn_old")!.sendUserMessage).toHaveBeenCalledWith("second turn");
+    expect(daemons.get("sesn_old")!.sendUserMessage).toHaveBeenCalledWith({ text: "second turn", images: [] });
     expect(store.findByThread({ teamId: "T", channelId: "C", threadTs: "5.0" })?.currentPlaceholderTs).toBe(
       "new-placeholder-ts",
     );
@@ -291,7 +347,7 @@ describe("handleInboundMessage", () => {
     await expect(
       handleInboundMessage({
         key: { teamId: "T", channelId: "C", threadTs: "5.0" },
-        text: "hi",
+        message: { text: "hi", images: [] },
         store,
         client,
         getOrCreate: getOrCreate as unknown as (id: string) => FakeDaemon,

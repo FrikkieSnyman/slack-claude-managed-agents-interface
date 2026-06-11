@@ -2,6 +2,36 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { RenderableEvent } from "./event-types.js";
 import type { GithubRepoConfig } from "../config.js";
 
+export type ImageMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+
+export interface InboundImage {
+  mediaType: ImageMediaType;
+  data: string; // base64
+}
+
+export interface UserMessage {
+  text: string;
+  images: InboundImage[];
+}
+
+type UserMessageContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: ImageMediaType; data: string } };
+
+export function buildUserMessageContent(message: UserMessage): UserMessageContentBlock[] {
+  const blocks: UserMessageContentBlock[] = [];
+  if (message.text.trim().length > 0) {
+    blocks.push({ type: "text", text: message.text });
+  }
+  for (const image of message.images) {
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: image.mediaType, data: image.data },
+    });
+  }
+  return blocks;
+}
+
 export interface EventStream extends AsyncIterable<RenderableEvent> {
   close?(): void;
 }
@@ -32,7 +62,7 @@ export interface CreateSessionInput {
 export interface CmaClient {
   createSession(input: CreateSessionInput): Promise<CmaSessionRef>;
   retrieveSession(sessionId: string): Promise<CmaSessionRef>;
-  sendUserMessage(sessionId: string, text: string): Promise<void>;
+  sendUserMessage(sessionId: string, message: UserMessage): Promise<void>;
   streamEvents(sessionId: string): Promise<EventStream>;
   listEvents(sessionId: string): AsyncIterable<RenderableEvent>;
 }
@@ -112,9 +142,9 @@ export function createCmaClient(apiKey: string): CmaClient {
       };
     },
 
-    async sendUserMessage(sessionId, text) {
+    async sendUserMessage(sessionId, message) {
       await anthropic.beta.sessions.events.send(sessionId, {
-        events: [{ type: "user.message", content: [{ type: "text", text }] }],
+        events: [{ type: "user.message", content: buildUserMessageContent(message) as never }],
       });
     },
 
