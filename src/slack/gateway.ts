@@ -1,6 +1,6 @@
 import bolt from "@slack/bolt";
-import { isInvalidSessionError, type CmaClient } from "../cma/client.js";
-import { isSupportedImageFile, type SlackFile } from "./files.js";
+import { isInvalidSessionError, type CmaClient, type UserMessage } from "../cma/client.js";
+import { downloadSlackImages, isSupportedImageFile, type SlackFile } from "./files.js";
 import type { SessionDaemon, SlackWriter } from "../cma/session-daemon.js";
 import { ThreadSessionStore, type ThreadKey } from "../store/thread-session-store.js";
 import type { Config, GithubRepoConfig } from "../config.js";
@@ -56,7 +56,7 @@ export function shouldHandleMessage(
 
 export interface HandleArgs {
   key: ThreadKey;
-  text: string;
+  message: UserMessage;
   store: ThreadSessionStore;
   client: CmaClient;
   getOrCreate: (sessionId: string) => Pick<SessionDaemon, "attachToTurn" | "sendUserMessage">;
@@ -87,7 +87,7 @@ export async function handleInboundMessage(args: HandleArgs): Promise<void> {
 }
 
 async function doHandle(args: HandleArgs): Promise<void> {
-  const { key, text, store, client, getOrCreate, postPlaceholder, cmaConfig } = args;
+  const { key, message, store, client, getOrCreate, postPlaceholder, cmaConfig } = args;
 
   let row = store.findByThread(key);
   let sessionId: string;
@@ -112,7 +112,7 @@ async function doHandle(args: HandleArgs): Promise<void> {
   const daemon = getOrCreate(sessionId);
   daemon.attachToTurn(placeholderTs);
   try {
-    await daemon.sendUserMessage(text);
+    await daemon.sendUserMessage(message);
   } catch (err) {
     if (isInvalidSessionError(err)) {
       store.setStatus(sessionId, "terminated");
@@ -147,14 +147,28 @@ export function buildSlackApp(deps: GatewayDeps): bolt.App {
     slackClient: any,
   ): Promise<void> => {
     if (raw.bot_id || raw.subtype === "bot_message") return;
-    if (!raw.text) return;
     const key = deriveThreadKey(raw as SlackEventCore);
-    const text = stripBotMention(raw.text as string);
+    const text = stripBotMention((raw.text as string | undefined) ?? "");
+    const files = (raw.files as SlackFile[] | undefined) ?? [];
+    const images = await downloadSlackImages(files, config.slack.botToken, fetch);
+    if (text.length === 0 && images.length === 0) {
+      if (files.length > 0) {
+        await slackClient.chat
+          .postMessage({
+            channel: raw.channel,
+            thread_ts: raw.thread_ts ?? raw.ts,
+            text: "⚠️ Couldn't read the attached image(s).",
+          })
+          .catch(() => {});
+      }
+      return;
+    }
+    const message: UserMessage = { text, images };
 
     try {
       await handleInboundMessage({
         key,
-        text,
+        message,
         store,
         client,
         getOrCreate: (id) => getOrCreateDaemon(id),
