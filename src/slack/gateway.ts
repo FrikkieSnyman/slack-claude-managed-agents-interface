@@ -23,6 +23,16 @@ export interface SlackEventCore {
   channel_type?: string;
 }
 
+// Slack omits `event.team` on some message subtypes (file_share, message_changed),
+// so fall back to the always-present envelope team_id / bolt context team.
+export function resolveTeamId(
+  event: { team?: string },
+  body?: { team_id?: string },
+  context?: { teamId?: string },
+): string | undefined {
+  return event.team ?? body?.team_id ?? context?.teamId;
+}
+
 export function deriveThreadKey(e: SlackEventCore): ThreadKey {
   const teamId = e.team ?? "unknown";
   const channelId = e.channel;
@@ -212,14 +222,18 @@ export function buildSlackApp(deps: GatewayDeps): bolt.App {
     }
   };
 
-  app.event("app_mention", async ({ event, client: webClient }) => {
-    await handle(event, webClient);
+  app.event("app_mention", async ({ event, client: webClient, context, body }) => {
+    const e = event as SlackEventCore;
+    e.team = resolveTeamId(e, body as { team_id?: string }, context as { teamId?: string });
+    await handle(e, webClient);
   });
 
-  app.message(async ({ message, client: webClient, context }) => {
+  app.message(async ({ message, client: webClient, context, body }) => {
     const botUserId = (context as { botUserId?: string }).botUserId;
-    if (!shouldHandleMessage(message as MessageRoutingInput, botUserId, store)) return;
-    await handle(message, webClient);
+    const m = message as MessageRoutingInput;
+    m.team = resolveTeamId(m, body as { team_id?: string }, context as { teamId?: string });
+    if (!shouldHandleMessage(m, botUserId, store)) return;
+    await handle(m, webClient);
   });
 
   return app;
