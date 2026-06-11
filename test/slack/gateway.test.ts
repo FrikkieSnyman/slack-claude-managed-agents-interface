@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { ThreadSessionStore } from "../../src/store/thread-session-store.js";
-import { handleInboundMessage, deriveThreadKey, shouldHandleMessage, InvalidSessionError } from "../../src/slack/gateway.js";
+import { handleInboundMessage, deriveThreadKey, shouldHandleMessage, resolveTeamId, InvalidSessionError } from "../../src/slack/gateway.js";
 import type { CmaClient } from "../../src/cma/client.js";
 
 interface FakeDaemon {
@@ -45,6 +45,24 @@ describe("deriveThreadKey", () => {
     expect(
       deriveThreadKey({ team: "T", channel: "D1", ts: "10.0", thread_ts: "5.0", channel_type: "im" }),
     ).toEqual({ teamId: "T", channelId: "D1", threadTs: "5.0" });
+  });
+});
+
+describe("resolveTeamId", () => {
+  it("prefers the event team when present", () => {
+    expect(resolveTeamId({ team: "T1" }, { team_id: "T2" }, { teamId: "T3" })).toBe("T1");
+  });
+
+  it("falls back to body.team_id when the event omits team (e.g. file_share, message_changed)", () => {
+    expect(resolveTeamId({}, { team_id: "T2" }, { teamId: "T3" })).toBe("T2");
+  });
+
+  it("falls back to context.teamId when event and body lack team", () => {
+    expect(resolveTeamId({}, {}, { teamId: "T3" })).toBe("T3");
+  });
+
+  it("returns undefined when no source has a team", () => {
+    expect(resolveTeamId({}, undefined, undefined)).toBeUndefined();
   });
 });
 
