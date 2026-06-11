@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSessionResources, isInvalidSessionError } from "../../src/cma/client.js";
+import { buildSessionResources, isInvalidSessionError, buildUserMessageContent } from "../../src/cma/client.js";
 
 describe("isInvalidSessionError", () => {
   it("returns false for non-objects", () => {
@@ -117,5 +117,37 @@ describe("buildSessionResources", () => {
     expect(out).toHaveLength(2);
     expect(out[0]?.type).toBe("memory_store");
     expect(out[1]?.type).toBe("github_repository");
+  });
+});
+
+describe("buildUserMessageContent", () => {
+  it("returns a single text block for text-only message", () => {
+    expect(buildUserMessageContent({ text: "hi", images: [] })).toEqual([
+      { type: "text", text: "hi" },
+    ]);
+  });
+
+  it("omits the text block when text is empty or whitespace", () => {
+    expect(
+      buildUserMessageContent({ text: "   ", images: [{ mediaType: "image/png", data: "QUJD" }] }),
+    ).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "QUJD" } },
+    ]);
+  });
+
+  it("returns text first, then one image block per image", () => {
+    expect(
+      buildUserMessageContent({
+        text: "look",
+        images: [
+          { mediaType: "image/png", data: "AAA" },
+          { mediaType: "image/jpeg", data: "BBB" },
+        ],
+      }),
+    ).toEqual([
+      { type: "text", text: "look" },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "AAA" } },
+      { type: "image", source: { type: "base64", media_type: "image/jpeg", data: "BBB" } },
+    ]);
   });
 });
