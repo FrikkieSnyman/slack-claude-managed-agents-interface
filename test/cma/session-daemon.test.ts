@@ -135,6 +135,7 @@ describe("SessionDaemon", () => {
       slack,
       onStatusChange: vi.fn(),
       coalesceMs: 50,
+      reconnect: false,
     });
 
     daemon.attachToTurn("ts_turn_1");
@@ -206,5 +207,109 @@ describe("SessionDaemon", () => {
 
     // streamEvents should have been invoked again for the second turn
     expect(client.streamEvents).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not end the turn when a non-status event (e.g. session.error) arrives before status_running", async () => {
+    // Regression: the initial lastStatus is "idle"; an early non-status event
+    // must NOT be treated as end-of-turn. The turn ends only on status_idle.
+    const events: RenderableEvent[] = [
+      { type: "session.error", error: { message: "MCP server init failed" } },
+      { type: "session.status_running" },
+      { type: "agent.tool_use", id: "ev1", name: "bash", input: { command: "ls" } },
+      { type: "agent.tool_result", tool_use_id: "ev1" },
+      { type: "agent.message", content: [{ type: "text", text: "All finished." }] },
+      { type: "session.status_idle" },
+    ];
+    const client = makeFakeClient(events);
+    const slack = makeSlackWriter();
+
+    const daemon = new SessionDaemon({
+      sessionId: "sesn_x",
+      client,
+      slack,
+      onStatusChange: vi.fn(),
+      coalesceMs: 50,
+    });
+
+    daemon.attachToTurn("ts_1");
+    await daemon.sendUserMessage(um("hi"));
+    await vi.advanceTimersByTimeAsync(500);
+    await daemon.waitForIdle();
+
+    expect(slack.postFinal).toHaveBeenCalledTimes(1);
+    expect(slack.posts[0]!.text).toBe("All finished.");
+  });
+
+  it("completes the turn when the stream ends early but the session is actually idle", async () => {
+    // Stream ends before delivering status_idle; retrieveSession reports idle.
+    const events: RenderableEvent[] = [
+      { type: "session.status_running" },
+      { type: "agent.message", content: [{ type: "text", text: "Quick answer." }] },
+    ];
+    const client: CmaClient = {
+      ...makeFakeClient(events),
+      retrieveSession: vi.fn(async () => ({ id: "sesn_x", status: "idle" as const, archived: false })),
+    };
+    const slack = makeSlackWriter();
+    const onStatus = vi.fn();
+
+    const daemon = new SessionDaemon({
+      sessionId: "sesn_x",
+      client,
+      slack,
+      onStatusChange: onStatus,
+      coalesceMs: 50,
+      reconnectDelayMs: 10,
+    });
+
+    daemon.attachToTurn("ts_1");
+    await daemon.sendUserMessage(um("hi"));
+    await vi.advanceTimersByTimeAsync(500);
+    await daemon.waitForIdle();
+
+    expect(client.retrieveSession).toHaveBeenCalled();
+    expect(slack.postFinal).toHaveBeenCalledTimes(1);
+    expect(slack.posts[0]!.text).toBe("Quick answer.");
+    expect(onStatus).toHaveBeenCalledWith("idle");
+  });
+
+  it("reconnects when the stream ends mid-run and finishes on a later stream", async () => {
+    // First stream ends after status_running (still running server-side);
+    // retrieveSession says running, so the daemon re-attaches and the second
+    // stream delivers the message + idle.
+    const streams: RenderableEvent[][] = [
+      [{ type: "session.status_running" }],
+      [
+        { type: "agent.message", content: [{ type: "text", text: "Done after reconnect." }] },
+        { type: "session.status_idle" },
+      ],
+    ];
+    let call = 0;
+    const client: CmaClient = {
+      createSession: vi.fn(async () => ({ id: "sesn_x", status: "idle" as const, archived: false })),
+      retrieveSession: vi.fn(async () => ({ id: "sesn_x", status: "running" as const, archived: false })),
+      sendUserMessage: vi.fn(async () => {}),
+      streamEvents: vi.fn(async () => makeFakeStream(streams[Math.min(call++, streams.length - 1)]!)),
+      listEvents: vi.fn(() => ({ async *[Symbol.asyncIterator]() {} })),
+    };
+    const slack = makeSlackWriter();
+
+    const daemon = new SessionDaemon({
+      sessionId: "sesn_x",
+      client,
+      slack,
+      onStatusChange: vi.fn(),
+      coalesceMs: 50,
+      reconnectDelayMs: 10,
+    });
+
+    daemon.attachToTurn("ts_1");
+    await daemon.sendUserMessage(um("hi"));
+    await vi.advanceTimersByTimeAsync(500);
+    await daemon.waitForIdle();
+
+    expect(client.streamEvents).toHaveBeenCalledTimes(2);
+    expect(slack.postFinal).toHaveBeenCalledTimes(1);
+    expect(slack.posts[0]!.text).toBe("Done after reconnect.");
   });
 });

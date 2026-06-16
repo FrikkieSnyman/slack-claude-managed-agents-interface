@@ -31,7 +31,10 @@ export interface SessionDaemonOptions {
   onStatusChange: (status: StatusChange) => void;
   coalesceMs?: number;
   reconnect?: boolean;
+  reconnectDelayMs?: number;
 }
+
+const MAX_IDLE_PROBES = 3;
 
 export class SessionDaemon {
   private readonly sessionId: string;
@@ -51,8 +54,12 @@ export class SessionDaemon {
   private terminalResolvers: Array<() => void> = [];
   private reconnectAttempts = 0;
   private readonly reconnect: boolean;
+  private readonly reconnectDelayMs: number;
   private lastErrorMessage: string | null = null;
   private reschedulingTimer: NodeJS.Timeout | null = null;
+  private turnEnded = false;
+  private sawRunning = false;
+  private idleProbes = 0;
 
   constructor(opts: SessionDaemonOptions) {
     this.sessionId = opts.sessionId;
@@ -60,6 +67,7 @@ export class SessionDaemon {
     this.slack = opts.slack;
     this.onStatusChange = opts.onStatusChange;
     this.reconnect = opts.reconnect ?? true;
+    this.reconnectDelayMs = opts.reconnectDelayMs ?? 1500;
     this.updater = new CoalescingUpdater<string>(
       async (messageTs, text) => {
         try {
@@ -83,6 +91,9 @@ export class SessionDaemon {
     this.currentPlaceholderTs = placeholderTs;
     this.buffer.reset();
     this.agentTextAccumulator = "";
+    this.turnEnded = false;
+    this.sawRunning = false;
+    this.idleProbes = 0;
     this.scheduleRender("running");
   }
 
@@ -129,8 +140,26 @@ export class SessionDaemon {
           const stream = await this.client.streamEvents(this.sessionId);
           await this.consume(stream);
           this.reconnectAttempts = 0;
-          if (this.lastStatus === "terminated") return;
-          return;
+          if (this.turnEnded) return;
+          if (!this.reconnect) return;
+          // The stream ended before a terminal status event arrived (it is not
+          // a persistent until-idle stream). Follow the real session status and
+          // either finish the turn or re-attach to keep streaming.
+          const session = await this.client.retrieveSession(this.sessionId);
+          if (session.archived || session.status === "terminated") {
+            this.applyStatus("session.status_terminated");
+            return;
+          }
+          if (session.status === "idle") {
+            if (this.sawRunning || this.idleProbes >= MAX_IDLE_PROBES) {
+              this.applyStatus("session.status_idle");
+              return;
+            }
+            this.idleProbes++;
+          } else {
+            this.sawRunning = true;
+          }
+          await new Promise((r) => setTimeout(r, this.reconnectDelayMs));
         } catch (err) {
           logger.warn({ err, sessionId: this.sessionId, attempt: this.reconnectAttempts }, "stream error");
           if (!this.reconnect || this.reconnectAttempts >= 5) {
@@ -153,7 +182,7 @@ export class SessionDaemon {
       if (id && this.seenEventIds.has(id)) continue;
       if (id) this.seenEventIds.add(id);
       this.handle(event);
-      if (this.lastStatus === "idle" || this.lastStatus === "terminated") {
+      if (this.turnEnded) {
         if (stream.close) stream.close();
         return;
       }
@@ -197,19 +226,23 @@ export class SessionDaemon {
   private applyStatus(type: string): void {
     if (type === "session.status_idle") {
       this.lastStatus = "idle";
+      this.turnEnded = true;
       this.scheduleRender("idle");
       this.clearReschedulingTimer();
       void this.completeTurn();
     } else if (type === "session.status_running") {
       this.lastStatus = "running";
+      this.sawRunning = true;
       this.scheduleRender("running");
       this.clearReschedulingTimer();
     } else if (type === "session.status_rescheduled") {
       this.lastStatus = "rescheduling";
+      this.sawRunning = true;
       this.scheduleRender("rescheduling");
       this.startReschedulingTimer();
     } else if (type === "session.status_terminated") {
       this.lastStatus = "terminated";
+      this.turnEnded = true;
       this.scheduleRender("terminated");
       void this.completeTerminated();
     }
